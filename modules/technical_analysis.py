@@ -55,7 +55,8 @@ def _evaluate_structure(df):
     if not {"high", "low"}.issubset(df.columns):
         return result
 
-    highs, lows = _confirmed_pivots(df["high"]), _confirmed_pivots(df["low"])
+   highs, _ = _confirmed_pivots(df["high"])
+_, lows = _confirmed_pivots(df["low"])
 
     result["pivot_highs"] = [round(x[1], 4) for x in highs[-2:]]
     result["pivot_lows"] = [round(x[1], 4) for x in lows[-2:]]
