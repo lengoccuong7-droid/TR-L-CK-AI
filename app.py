@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import hashlib
 import sqlite3
 import datetime
+import os
 
 from config import APP_NAME, APP_VERSION, DB_PATH
 from modules.indicators import add_indicators
@@ -27,12 +28,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Hàm khởi tạo database chuẩn bảo mật đa người dùng
+# Hàm khởi tạo database chuẩn bảo mật đa người dùng (Có cơ chế tự làm sạch nếu file lỗi/rỗng)
 def init_system_db():
     try:
+        # Nếu file tồn tại nhưng kích thước bằng 0 (rỗng) thì xóa đi để tạo mới
+        if os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) == 0:
+            os.remove(DB_PATH)
+            
         with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
             cursor = conn.cursor()
-            
             # Bảng lịch sử phân tích
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS analysis_history (
@@ -66,8 +70,13 @@ def init_system_db():
                 cursor.execute("INSERT INTO users (username, password_hash, role, recovery_code) VALUES (?, ?, ?, ?)", 
                                ("admin", admin_pass_hash, "admin", "admin"))
             conn.commit()
-    except Exception as e:
-        print(f"Lỗi khởi tạo database: {e}")
+            
+    except (sqlite3.DatabaseError, Exception) as e:
+        # Nếu file bị hỏng cấu trúc SQLite, tự động xóa file lỗi và tạo lại sạch sẽ
+        print(f"Cảnh báo: Phát hiện database lỗi ({e}). Đang tiến hành thiết lập lại cơ sở dữ liệu...")
+        if os.path.exists(DB_PATH):
+            os.remove(DB_PATH)
+        init_system_db()
 
 init_system_db()
 
@@ -84,7 +93,7 @@ def init_user_data(username):
         ])
 
 # -----------------------------------------------------------------------------
-# 2. XÁC THỰC ĐĂNG NHẬP / ĐĂNG KÝ & QUÊN MẬT KHẨU (LƯU TRỰC TIẾP VÀO SQLITE)
+# 2. XÁC THỰC ĐĂNG NHẬP / ĐĂNG KÝ & QUÊN MẬT KHẨU
 # -----------------------------------------------------------------------------
 if st.session_state["logged_in_user"] is None:
     st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
@@ -118,7 +127,7 @@ if st.session_state["logged_in_user"] is None:
                 except Exception as e:
                     st.error(f"Lỗi kết nối cơ sở dữ liệu: {e}")
 
-    # 2. Tab Đăng ký tài khoản cho khách
+    # 2. Tab Đăng ký tài khoản
     with tab_reg:
         r_user = st.text_input("Chọn tên đăng ký", key="r_u").strip()
         r_pass = st.text_input("Tạo mật khẩu", type="password", key="r_p")
@@ -146,7 +155,7 @@ if st.session_state["logged_in_user"] is None:
                 except Exception as e:
                     st.error(f"Lỗi đăng ký: {e}")
 
-    # 3. Tab Quên mật khẩu / Lấy lại mật khẩu
+    # 3. Tab Quên mật khẩu
     with tab_forgot:
         st.info("💡 Nhập tên tài khoản và mã khôi phục bí mật đã đăng ký để đặt lại mật khẩu mới.")
         f_user = st.text_input("Tên tài khoản cần lấy lại mật khẩu", key="f_u").strip()
@@ -452,7 +461,7 @@ with main_tab3:
             "Lãi/Lỗ (VNĐ)": "{:,.0f}", "Lãi/Lỗ (%)": "{:.2f}%"
         }), use_container_width=True)
 
-# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ (GỌN GÀNG & XÓA TOÀN BỘ) ---
+# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ ---
 with main_tab4:
     st.subheader("📜 Nhật Ký & Quản Lý Lịch Sử Phân Tích")
     st.caption("Tra cứu lại toàn bộ lịch sử phân tích đã lưu trong hệ thống:")
@@ -463,21 +472,6 @@ with main_tab4:
     try:
         with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
             cursor = conn.cursor()
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS analysis_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT,
-                    timestamp TEXT,
-                    last_close REAL,
-                    score INTEGER,
-                    decision TEXT,
-                    buy_zone TEXT,
-                    target_price TEXT,
-                    stop_loss TEXT,
-                    summary TEXT
-                )
-            ''')
             
             cursor.execute("PRAGMA table_info(analysis_history)")
             cols = [col[1] for col in cursor.fetchall()]
