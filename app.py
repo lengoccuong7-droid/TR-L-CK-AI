@@ -29,41 +29,45 @@ st.set_page_config(
 
 # Hàm khởi tạo database chuẩn bảo mật đa người dùng
 def init_system_db():
-    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-        cursor = conn.cursor()
-        # Bảng lịch sử phân tích
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS analysis_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol TEXT,
-                timestamp TEXT,
-                last_close REAL,
-                score INTEGER,
-                decision TEXT,
-                buy_zone TEXT,
-                target_price TEXT,
-                stop_loss TEXT,
-                summary TEXT
-            )
-        ''')
-        
-        # Bảng quản lý người dùng & phân quyền (Admin / User)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
-                password_hash TEXT,
-                role TEXT,
-                recovery_code TEXT
-            )
-        ''')
-        
-        # Tạo sẵn tài khoản Admin mặc định (Pass: 123456, Mã khôi phục: admin)
-        cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-        if cursor.fetchone()[0] == 0:
-            admin_pass_hash = hashlib.sha256(str.encode("123456")).hexdigest()
-            cursor.execute("INSERT INTO users (username, password_hash, role, recovery_code) VALUES (?, ?, ?, ?)", 
-                           ("admin", admin_pass_hash, "admin", "admin"))
-        conn.commit()
+    try:
+        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+            cursor = conn.cursor()
+            
+            # Bảng lịch sử phân tích
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS analysis_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT,
+                    timestamp TEXT,
+                    last_close REAL,
+                    score INTEGER,
+                    decision TEXT,
+                    buy_zone TEXT,
+                    target_price TEXT,
+                    stop_loss TEXT,
+                    summary TEXT
+                )
+            ''')
+            
+            # Bảng quản lý người dùng & phân quyền (Admin / User)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    username TEXT PRIMARY KEY,
+                    password_hash TEXT,
+                    role TEXT,
+                    recovery_code TEXT
+                )
+            ''')
+            
+            # Tạo sẵn tài khoản Admin mặc định (Pass: 123456, Mã khôi phục: admin)
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
+            if cursor.fetchone()[0] == 0:
+                admin_pass_hash = hashlib.sha256(str.encode("123456")).hexdigest()
+                cursor.execute("INSERT INTO users (username, password_hash, role, recovery_code) VALUES (?, ?, ?, ?)", 
+                               ("admin", admin_pass_hash, "admin", "admin"))
+            conn.commit()
+    except Exception as e:
+        print(f"Lỗi khởi tạo database: {e}")
 
 init_system_db()
 
