@@ -56,7 +56,7 @@ def _evaluate_structure(df):
         return result
 
    highs, _ = _confirmed_pivots(df["high"])
-_, lows = _confirmed_pivots(df["low"])
+   _, lows = _confirmed_pivots(df["low"])
 
     result["pivot_highs"] = [round(x[1], 4) for x in highs[-2:]]
     result["pivot_lows"] = [round(x[1], 4) for x in lows[-2:]]
