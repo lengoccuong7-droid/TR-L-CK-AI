@@ -46,4 +46,9 @@ def _evaluate_structure(df):
         "structure_detail": detail
     })
 
-    return result
+    def evaluate_technical(df):
+    """
+    Hàm chính để app.py gọi phân tích kỹ thuật.
+    """
+    return _evaluate_technical(df)
+    
