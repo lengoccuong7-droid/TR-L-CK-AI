@@ -1,56 +1,71 @@
-import pandas as pd
-from modules.technical_analysis import evaluate_technical
-from modules.support_resistance import find_support_resistance
+# modules/decision_engine.py
 
-def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
-    last = df.iloc[-1]
-    last_close = float(last["close"])
-    tech = evaluate_technical(df)
-    sr = find_support_resistance(df)
-    score = tech["score"]
-    risk_level = ai_result["risk_level"]
-    atr = float(last.get("ATR14", last_close * 0.02))
+class DecisionEngine:
+    def __init__(self, market_data, technical_indicators, sr_levels):
+        self.market_data = market_data
+        self.indicators = technical_indicators
+        self.sr = sr_levels
 
-    if score >= 3 and risk_level != "CAO":
-        decision = "MUA"
-        reason = "Tín hiệu kỹ thuật ủng hộ mạnh mẽ, dòng tiền tốt và rủi ro ở mức kiểm soát được."
-    elif score >= 1:
-        decision = "CHỜ MUA"
-        reason = "Xu hướng tích cực nhưng cần kiên nhẫn chờ giá điều chỉnh về vùng hỗ trợ đẹp."
-    elif score >= -1:
-        decision = "GIỮ"
-        reason = "Cổ phiếu đang tích lũy đi ngang, chưa xuất hiện tín hiệu vi phạm xấu."
-    elif score >= -3:
-        decision = "CHỜ BÁN"
-        reason = "Động lượng suy yếu, ưu tiên canh các nhịp hồi phục kỹ thuật để hạ tỷ trọng."
-    else:
-        decision = "BÁN"
-        reason = "Tín hiệu kỹ thuật vi phạm ngưỡng an toàn, áp lực bán xả lớn."
+    def generate_strategy(self):
+        """
+        Phân rã thành 2 lối chơi độc lập, loại bỏ xung đột logic.
+        """
+        trend = self.indicators.get("trend", "Giảm / Tích lũy")
+        risk = self.indicators.get("risk", "CAO")
+        current_price = self.sr.get("current_price", 0)
+        support = self.sr.get("support", 0)
+        resistance = self.sr.get("resistance", 0)
+        is_safe_distance = self.sr.get("is_safe_distance", True)
 
-    support_price = sr["support"]
-    resistance_price = sr["resistance"]
+        # Khung kết quả trả về cấu trúc 2 lối chơi
+        strategy_result = {
+            "overall_status": {
+                "trend": trend,
+                "risk_level": risk,
+                "action_signal": "ĐỨNG NGOÀI / CHỜ BÁN" if risk == "CAO" else "QUAN SÁT"
+            },
+            "t_plus_strategy": None,
+            "holding_strategy": None
+        }
 
-    # --- TỐT ƯU VÙNG MUA CHUẨN (CÓ KHÔNG GIAN THỞ BẰNG 0.5 * ATR) ---
-    buy_zone_low = round(max(support_price, last_close - 1.5 * atr), 2)
-    
-    # Cận trên cộng thêm biên độ ATR ngắn hạn nhưng chặn lại không vượt quá Kháng cự
-    buy_zone_high = round(min(resistance_price, last_close + 0.5 * atr), 2)
-    
-    # Đảm bảo cận dưới không lớn hơn cận trên
-    if buy_zone_low > buy_zone_high:
-        buy_zone_low = round(buy_zone_high * 0.98, 2)
+        # --- NHÁNH 1: LỐI CHƠI T+ (Lướt sóng ngắn hạn) ---
+        # Quy tắc: Nếu rủi ro CAO hoặc khoảng cách đến kháng cự quá hẹp -> KHÔNG PHÁT TÍN HIỆU MUA T+
+        if risk == "CAO" or not is_safe_distance:
+            strategy_result["t_plus_strategy"] = {
+                "status": "KHÔNG KHUYẾN NGHỊ MUA",
+                "reason": "Rủi ro thị trường cao hoặc biên độ đến kháng cự quá hẹp, không đạt tỷ lệ R:R an toàn."
+            }
+        else:
+            # Tính toán các mốc T+ chuẩn thực chiến
+            entry_min, entry_max = self.sr.get("entry_zone", (support, support * 1.02))
+            stop_loss = round(support * 0.97, 2) # Cắt lỗ dưới hỗ trợ 3%
+            take_profit = round(resistance * 0.98, 2) # Chốt lời sát kháng cự
+            
+            # Tính tỷ lệ Rủi ro / Lợi nhuận (R:R)
+            risk_amount = current_price - stop_loss
+            reward_amount = take_profit - current_price
+            rr_ratio = round(reward_amount / risk_amount, 2) if risk_amount > 0 else 0
 
-    buy_zone = f"{buy_zone_low:,.0f} - {buy_zone_high:,.0f}"
+            strategy_result["t_plus_strategy"] = {
+                "status": "CÓ THỂ CÂN NHẮC THĂM DÒ",
+                "entry_zone": f"{entry_min:,.0f} - {entry_max:,.0f}",
+                "take_profit": f"{take_profit:,.0f}",
+                "stop_loss": f"{stop_loss:,.0f} (Thủng hỗ trợ cứng)",
+                "risk_reward_ratio": f"1:{rr_ratio}",
+                "max_holding_days": "3 - 7 phiên (T+3 đến T+7)",
+                "note": "Tuân thủ tuyệt đối cắt lỗ, không gồng lỗ ngắn hạn."
+            }
 
-    confirm_price = round(last_close * 1.015, 2)
-    target_price = round(max(resistance_price, last_close + 2.5 * atr), 2)
-    stop_loss = round(min(support_price * 0.97, last_close - 2.0 * atr), 2)
+        # --- NHÁNH 2: LỐI CHƠI NẮM GIỮ (Trung / Dài hạn) ---
+        if "Giảm" in trend or risk == "CAO":
+            strategy_result["holding_strategy"] = {
+                "status": "CHƯA PHÙ HỢP TÍCH SẢN",
+                "action": "Tiếp tục đứng ngoài quan sát xu hướng lớn. Chưa vội gom hàng khi dòng tiền trung tính/yếu."
+            }
+        else:
+            strategy_result["holding_strategy"] = {
+                "status": "NẮM GIỮ / GỒNG LÃI",
+                "action": "Tiếp tục nắm giữ theo xu hướng lớn. Chỉ chốt lời từng phần khi gãy đường xu hướng (MA50/MA200)."
+            }
 
-    return {
-        "decision": decision,
-        "reason": reason,
-        "buy_zone": buy_zone,
-        "confirm_price": f"{confirm_price:,.0f}",
-        "target_price": f"{target_price:,.0f}",
-        "stop_loss": f"{stop_loss:,.0f}",
-    }
+        return strategy_result
