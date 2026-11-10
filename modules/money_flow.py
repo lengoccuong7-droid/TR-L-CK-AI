@@ -76,7 +76,7 @@ def evaluate_money_flow(df: pd.DataFrame) -> dict:
     # ==========================================
 
     vol_ma20 = _num(last.get("VOL_MA20"))
-    vol_ma5 = _num(last.get("VOL_MA10"))
+    vol_ma5 = _num(data["volume"].tail(5).mean()) if len(data) >= 5 else None
 
     # Nếu có dữ liệu VOL_MA5 riêng thì ưu tiên.
     if "VOL_MA5" in data.columns:
