@@ -387,37 +387,229 @@ with main_tab1:
             st.error(f"⚠️ Lỗi khi xử lý tính toán kỹ thuật hoặc AI: {e}")
             st.info("💡 Vui lòng kiểm tra lại tệp dữ liệu nạp vào xem có đủ các cột Giá và Khối lượng hay không.")
 
+
 # --- TAB 2: KỊCH BẢN THẦY - TRÒ ---
 with main_tab2:
     st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ CHUYÊN GIA CHO MÃ {symbol_input}")
-    
+
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để Thầy có cơ sở phân tích và đưa ra lời khuyên chiến lược.")
+        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để phân tích.")
     else:
         try:
             df = add_indicators(df_raw)
-            ai_res = run_ai_analysis(df, symbol_input, ato_data=ato_data, financial_metrics=financial_metrics)
-            decision_res = make_trading_decision(df, ai_res)
 
-            st.markdown(f"""
-            <div style="background-color: #1e293b; color: #f8fafc; padding: 1.8rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI THẦY DẶN TRÒ (GÓC NHÌN CHUYÊN GIA THỰC CHIẾN)</div>
-                <div style="line-height: 1.8; font-size: 1.05rem;">
-                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
-                    <b>1. Đánh giá tổng quan cốt lõi:</b> {ai_res['summary']}<br/><br/>
-                    <b>2. Chiến lược hành động chi tiết:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🎯 <b>Dành cho TRÒ CHƯA CÓ HÀNG:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá xanh mạnh.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn chờ nhịp chỉnh về đúng vùng mua chuẩn <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để lấy vị thế thăm dò 30-50%.<br/><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🛡️ <b>Dành cho TRÒ ĐÃ CÓ HÀNG:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tiếp tục nắm giữ gồng lãi theo xu hướng nếu dòng tiền khỏe.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Canh chốt lời từng phần khi tiến sát mục tiêu <code style="color: #facc15; font-size: 1.1rem;">{decision_res['target_price']}</code>.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuân thủ tuyệt đối kỷ luật cắt lỗ hạ tỷ trọng ngay lập tức nếu thủng vùng <code style="color: #f87171; font-size: 1.1rem;">{decision_res['stop_loss']}</code>!"
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            # Lấy dữ liệu trực tiếp từ các module phân tích
+            ai_res = run_ai_analysis(
+                df, symbol_input,
+                ato_data=ato_data,
+                financial_metrics=financial_metrics
+            )
+            decision_res = make_trading_decision(df, ai_res)
+            tech_res = evaluate_technical(df)
+            flow_res = evaluate_money_flow(df)
+            sr_res = find_support_resistance(df)
+
+            def get_value(data, *keys):
+                if not isinstance(data, dict):
+                    return None
+                for key in keys:
+                    value = data.get(key)
+                    if value is not None and str(value).strip() not in ("", "None", "nan"):
+                        return value
+                return None
+
+            def show_value(value):
+                if value is None:
+                    return "Chưa có dữ liệu"
+                if isinstance(value, float):
+                    return f"{value:.2f}"
+                return str(value)
+
+            def get_last_value(columns):
+                for col in columns:
+                    if col in df.columns:
+                        value = pd.to_numeric(df[col], errors="coerce").iloc[-1]
+                        if pd.notna(value):
+                            return float(value)
+                return None
+
+            close = float(df["close"].iloc[-1])
+            decision = str(decision_res.get("decision", "CHƯA XÁC ĐỊNH"))
+            trend = str(get_value(tech_res, "trend") or ai_res.get("trend", "Chưa xác định"))
+            momentum = str(get_value(tech_res, "momentum") or ai_res.get("momentum", "Chưa xác định"))
+            flow_status = str(get_value(flow_res, "flow_status") or ai_res.get("flow_summary", "Chưa xác định"))
+            risk = str(ai_res.get("risk_level", "Chưa xác định"))
+
+            # Thu thập bằng chứng kỹ thuật thực tế
+            evidence = []
+
+            evidence.append(
+                f"- **Giá đóng cửa gần nhất:** {close:.2f}"
+            )
+            evidence.append(
+                f"- **Xu hướng:** {trend}"
+            )
+            evidence.append(
+                f"- **Động lượng:** {momentum}"
+            )
+            evidence.append(
+                f"- **Điểm kỹ thuật:** {show_value(get_value(tech_res, 'score'))}"
+            )
+
+            ma_status = get_value(tech_res, "ma_status")
+            ma_slopes = get_value(tech_res, "ma_slopes")
+            evidence.append(f"- **Trạng thái các đường MA:** {show_value(ma_status)}")
+            evidence.append(f"- **Độ dốc MA:** {show_value(ma_slopes)}")
+
+            rsi = get_last_value(["RSI14", "rsi14", "RSI"])
+            evidence.append(
+                f"- **RSI:** {show_value(rsi)}"
+            )
+
+            macd_status = get_value(tech_res, "macd_status")
+            evidence.append(
+                f"- **MACD:** {show_value(macd_status)}"
+            )
+
+            structure = get_value(tech_res, "structure")
+            evidence.append(
+                f"- **Cấu trúc giá:** {show_value(structure)}"
+            )
+
+            evidence.append(
+                f"- **Dòng tiền:** {flow_status}"
+            )
+            evidence.append(
+                f"- **Khối lượng so với trung bình:** "
+                f"{show_value(get_value(flow_res, 'vol_ratio_20', 'volume_ratio_20'))}"
+            )
+            evidence.append(
+                f"- **CMF20:** {show_value(get_value(flow_res, 'cmf20', 'CMF20'))}"
+            )
+            evidence.append(
+                f"- **MFI14:** {show_value(get_value(flow_res, 'mfi14', 'MFI14'))}"
+            )
+            evidence.append(
+                f"- **Xu hướng OBV:** {show_value(get_value(flow_res, 'obv_trend'))}"
+            )
+
+            evidence.append(
+                f"- **Hỗ trợ:** {show_value(sr_res.get('support'))}"
+            )
+            evidence.append(
+                f"- **Kháng cự:** {show_value(sr_res.get('resistance'))}"
+            )
+            evidence.append(
+                f"- **Khoảng cách tới hỗ trợ:** "
+                f"{show_value(sr_res.get('dist_to_support_pct'))}%"
+            )
+            evidence.append(
+                f"- **Khoảng cách tới kháng cự:** "
+                f"{show_value(sr_res.get('dist_to_resistance_pct'))}%"
+            )
+
+            warnings = get_value(tech_res, "warnings")
+            data_quality = get_value(tech_res, "data_quality")
+
+            # Kiểm tra tính nhất quán trước khi đưa ra lời khuyên
+            decision_text = decision.upper()
+            weak_signal = (
+                "YẾU" in momentum.upper()
+                or "GIẢM" in trend.upper()
+                or "CAO" in risk.upper()
+                or "TIÊU CỰC" in flow_status.upper()
+            )
+
+            is_buy_now = (
+                "MUA" in decision_text
+                and "CHỜ MUA" not in decision_text
+                and "KHÔNG MUA" not in decision_text
+            )
+
+            if weak_signal:
+                buyer_advice = (
+                    "Chưa nên mở vị thế mới khi các tín hiệu tổng hợp còn yếu "
+                    "hoặc rủi ro cao. Chỉ xem xét mua khi giá tạo nền hoặc đảo chiều "
+                    "có xác nhận, động lượng cải thiện và dòng tiền ủng hộ. "
+                    "Không mua chỉ vì giá chạm vùng hỗ trợ."
+                )
+            elif is_buy_now:
+                buyer_advice = (
+                    "Có thể xem xét giải ngân theo từng phần nếu giá đáp ứng "
+                    "điều kiện xác nhận của hệ thống. Phải xác định điểm cắt lỗ "
+                    "và tỷ lệ lợi nhuận/rủi ro trước khi đặt lệnh. Không mua đuổi."
+                )
+            else:
+                buyer_advice = (
+                    "Ưu tiên quan sát và chờ tín hiệu xác nhận. Vùng mua chỉ là "
+                    "khu vực theo dõi, không đồng nghĩa với tín hiệu mua ngay."
+                )
+
+            if weak_signal:
+                holder_advice = (
+                    "Ưu tiên bảo vệ vốn. Theo dõi phản ứng giá tại vùng hỗ trợ "
+                    "và diễn biến dòng tiền. Nếu giá phá vỡ hỗ trợ hoặc xuất hiện "
+                    "điểm vô hiệu kịch bản, cần xem xét hạ tỷ trọng theo mức "
+                    "chịu rủi ro. Không tiếp tục nắm giữ chỉ vì kỳ vọng giá hồi."
+                )
+            else:
+                holder_advice = (
+                    "Có thể tiếp tục nắm giữ khi xu hướng và dòng tiền vẫn được "
+                    "duy trì. Theo dõi vùng kháng cự để cân nhắc chốt lời từng phần; "
+                    "thực hiện quản trị rủi ro nếu giá vi phạm điểm cắt lỗ."
+                )
+
+            # Nội dung nhận định
+            report = f"""
+### 🎯 LỜI THẦY DẶN TRÒ – PHÂN TÍCH MÃ {symbol_input}
+
+**Quyết định của hệ thống: {decision}**
+
+**1. Đánh giá tổng quan**
+
+{ai_res.get('summary', 'Chưa có nhận định tổng hợp từ AI.')}
+
+- Xu hướng: **{trend}**
+- Động lượng: **{momentum}**
+- Dòng tiền: **{flow_status}**
+- Mức rủi ro: **{risk}**
+
+**2. Bằng chứng kỹ thuật**
+
+{chr(10).join(evidence)}
+
+**3. Chiến lược dành cho người chưa có cổ phiếu**
+
+{buyer_advice}
+
+- Vùng giá theo dõi: **{show_value(decision_res.get('buy_zone'))}**
+- Giá xác nhận: **{show_value(decision_res.get('confirm_price'))}**
+
+**4. Chiến lược dành cho người đang nắm giữ**
+
+{holder_advice}
+
+- Mục tiêu tham khảo: **{show_value(decision_res.get('target_price'))}**
+- Mức cắt lỗ/điểm vô hiệu: **{show_value(decision_res.get('stop_loss'))}**
+
+**5. Phản biện và cảnh báo**
+
+{chr(10).join('- ' + str(x) for x in ai_res.get('counter_arguments', []))}
+
+- Cảnh báo kỹ thuật: {show_value(warnings)}
+- Chất lượng dữ liệu: {show_value(data_quality)}
+
+**Lưu ý:** Vùng mua, mục tiêu và cắt lỗ là các mức tham khảo từ mô hình. Cần đối chiếu dữ liệu thực tế và điều kiện xác nhận trước khi giao dịch.
+"""
+
+            st.markdown(
+                report,
+                unsafe_allow_html=False
+            )
+
         except Exception as e:
             st.error(f"⚠️ Lỗi hiển thị kịch bản Thầy - Trò: {e}")
+
 
 # --- TAB 3: QUẢN TRỊ VỐN & NAV ---
 with main_tab3:
